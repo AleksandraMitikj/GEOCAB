@@ -1,0 +1,240 @@
+-- ============================================================
+--  PROCEDURE 1: sp_request_ride
+--  Креира нова вожња: наоѓа најблизок слободен возач,
+--  пресметува цена, вметнува во Rides и праќа нотификација.
+-- ============================================================
+CREATE OR REPLACE PROCEDURE sp_request_ride(
+    p_user_id            INT,
+    p_pickup_location_id INT,
+    p_dropoff_location_id INT,
+    p_distance_km        NUMERIC,
+    OUT p_ride_id        INT
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_driver_id          INT;
+    v_vehicle_ownership_id INT;
+    v_discount_pct       NUMERIC := 0;
+    v_final_price        NUMERIC;
+    v_status_requested   INT;
+    v_notif_status       INT;
+    v_message_id         INT;
+BEGIN
+    -- 1. Земи го статусот 'requested' за вожњата
+    SELECT status_id INTO v_status_requested
+    FROM Status
+    WHERE status_tip = 'ride' AND status_text = 'requested'
+    LIMIT 1;
+
+    -- 2. Провери дали корисникот постои и е активен
+    IF NOT EXISTS (
+        SELECT 1 FROM Users u
+        JOIN Status s ON u.status_id = s.status_id
+        WHERE u.user_id = p_user_id AND s.status_text = 'active'
+    ) THEN
+        RAISE EXCEPTION 'Корисникот со ID % не постои или не е активен', p_user_id;
+    END IF;
+
+    -- 3. Провери дали локациите постојат
+    IF NOT EXISTS (SELECT 1 FROM Locations WHERE location_id = p_pickup_location_id) THEN
+        RAISE EXCEPTION 'Pickup локацијата со ID % не постои', p_pickup_location_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM Locations WHERE location_id = p_dropoff_location_id) THEN
+        RAISE EXCEPTION 'Dropoff локацијата со ID % не постои', p_dropoff_location_id;
+    END IF;
+
+    -- 4. Провери дали дистанцата е валидна
+    IF p_distance_km <= 0 THEN
+        RAISE EXCEPTION 'Дистанцата мора да биде поголема од 0';
+    END IF;
+
+    -- 5. Пресметај попуст: >= 9km → 10%, инаку 0%
+    IF p_distance_km >= 9 THEN
+        v_discount_pct := 10.0;
+    END IF;
+
+    -- 6. Најди најблизок слободен возач (ја повикуваме функцијата fn_find_nearest_driver)
+    SELECT driver_id INTO v_driver_id
+    FROM fn_find_nearest_driver(p_pickup_location_id);
+
+    IF v_driver_id IS NULL THEN
+        -- Ако нема слободен возач → порака 9 (Нема достапни возачи)
+        SELECT message_id INTO v_message_id
+        FROM Messages WHERE message_text LIKE 'Nemate dostapni%' LIMIT 1;
+
+        SELECT status_id INTO v_notif_status
+        FROM Status WHERE status_tip = 'ride' AND status_text = 'cancelled' LIMIT 1;
+
+        -- Вметнуваме "dummy" нотификација без ride_id (не можеме бидејќи ride_id е NOT NULL)
+        -- Затоа само фрламе exception
+        RAISE EXCEPTION 'Нема достапни возачи во моментот. Обидете се повторно подоцна.';
+    END IF;
+
+    -- 7. Земи го vehicle_ownership_id на тој возач (примарното возило)
+    SELECT Vehicle_ownership_id INTO v_vehicle_ownership_id
+    FROM Drivers_Vehicle_ownership
+    WHERE driver_id = v_driver_id
+    LIMIT 1;
+
+    -- 8. Пресметај финална цена (ја повикуваме функцијата fn_calculate_ride_price)
+    v_final_price := fn_calculate_ride_price(v_driver_id, p_distance_km, v_discount_pct);
+
+    -- 9. Вметни ја вожњата во Rides
+    INSERT INTO Rides (
+        user_id,
+        driver_id,
+        vehicle_ownership_id,
+        pickup_location_id,
+        dropoff_location_id,
+        status_id,
+        request_time,
+        pickup_time,
+        start_time,
+        end_time,
+        distance_km,
+        final_price,
+        discount_percentage
+    ) VALUES (
+        p_user_id,
+        v_driver_id,
+        v_vehicle_ownership_id,
+        p_pickup_location_id,
+        p_dropoff_location_id,
+        v_status_requested,
+        NOW(),
+        NOW() + interval '5 minutes',   -- очекувано pickup
+        NOW() + interval '8 minutes',   -- очекуван почеток
+        NOW() + interval '20 minutes',  -- очекуван крај
+        p_distance_km,
+        v_final_price,
+        v_discount_pct
+    )
+    RETURNING ride_id INTO p_ride_id;
+
+    -- 10. Прати нотификација: "Барањето е успешно испратено"
+    SELECT message_id INTO v_message_id
+    FROM Messages WHERE message_text LIKE 'Vaseto baranje e uspesno%' LIMIT 1;
+
+    SELECT status_id INTO v_notif_status
+    FROM Status WHERE status_tip = 'ride' AND status_text = 'completed' LIMIT 1;
+
+    INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+    VALUES (v_message_id, NOW(), p_user_id, p_ride_id, v_notif_status);
+
+    RAISE NOTICE 'Вожњата е успешно креирана: ride_id=%, driver_id=%, цена=% MKD',
+        p_ride_id, v_driver_id, v_final_price;
+
+END;
+$$;
+
+-- Тест:
+DO $$
+DECLARE
+    v_ride_id INT;
+BEGIN
+    CALL sp_request_ride(
+        p_user_id             => 1000,
+        p_pickup_location_id  => 1,
+        p_dropoff_location_id => 500,
+        p_distance_km         => 4.5,
+        p_ride_id             => v_ride_id
+    );
+    RAISE NOTICE 'Новата вожња има ID: %', v_ride_id;
+END $$;
+
+
+-- ============================================================
+--  PROCEDURE 2: sp_complete_ride
+--  Ја завршува вожњата: го менува статусот на 'completed',
+--  вметнува плаќање и ажурира активноста на возачот.
+-- ============================================================
+CREATE OR REPLACE PROCEDURE sp_complete_ride(
+    p_ride_id         INT,
+    p_payment_method  VARCHAR  -- 'CASH' или 'CARD'
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_ride              Rides%ROWTYPE;
+    v_status_completed  INT;
+    v_status_in_prog    INT;
+    v_status_accepted   INT;
+    v_pay_method_id     INT;
+    v_pay_status_id     INT;
+    v_notif_status      INT;
+    v_message_id        INT;
+BEGIN
+    -- 1. Земи ги податоците за вожњата со LOCK за да спречиме race condition
+    SELECT * INTO v_ride
+    FROM Rides
+    WHERE ride_id = p_ride_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Вожњата со ID % не постои', p_ride_id;
+    END IF;
+
+    -- 2. Земи ги потребните статус ID-а
+    SELECT status_id INTO v_status_completed
+    FROM Status WHERE status_tip = 'ride' AND status_text = 'completed' LIMIT 1;
+
+    SELECT status_id INTO v_status_in_prog
+    FROM Status WHERE status_tip = 'ride' AND status_text = 'in_progress' LIMIT 1;
+
+    SELECT status_id INTO v_status_accepted
+    FROM Status WHERE status_tip = 'ride' AND status_text = 'accepted' LIMIT 1;
+
+    -- 3. Провери дека вожњата е во дозволена состојба за да се заврши
+    IF v_ride.status_id NOT IN (v_status_in_prog, v_status_accepted) THEN
+        RAISE EXCEPTION 'Вожњата со ID % не може да се заврши — тековен статус не е in_progress или accepted', p_ride_id;
+    END IF;
+
+    -- 4. Провери дали методот на плаќање е валиден
+    SELECT payment_method_id INTO v_pay_method_id
+    FROM Payment_methods
+    WHERE payment_tip = UPPER(p_payment_method);
+
+    IF v_pay_method_id IS NULL THEN
+        RAISE EXCEPTION 'Невалиден метод на плаќање: %. Користете CASH или CARD', p_payment_method;
+    END IF;
+
+    -- 5. Ажурирај го статусот на вожњата на 'completed' и end_time на NOW()
+    --    (тригерот trg_notify_on_ride_status_change автоматски ќе прати нотификација)
+    UPDATE Rides
+    SET status_id = v_status_completed,
+        end_time  = NOW()
+    WHERE ride_id = p_ride_id;
+
+    -- 6. Вметни плаќање
+    SELECT status_id INTO v_pay_status_id
+    FROM Status WHERE status_tip = 'payment' AND status_text = 'completed' LIMIT 1;
+
+    INSERT INTO Payments (amount, payment_method_id, payment_time, ride_id, status_id)
+    VALUES (v_ride.final_price, v_pay_method_id, NOW(), p_ride_id, v_pay_status_id);
+
+    -- 7. Ослободи го возачот → is_available = true
+    UPDATE Active_drivers
+    SET is_available = true
+    WHERE driver_id = v_ride.driver_id;
+
+    RAISE NOTICE 'Вожњата % е завршена. Платено % MKD со %.',
+        p_ride_id, v_ride.final_price, UPPER(p_payment_method);
+
+END;
+$$;
+
+-- Тест:
+-- Прво најди вожња со статус in_progress или accepted
+SELECT ride_id, status_id FROM Rides
+WHERE status_id IN (
+    SELECT status_id FROM Status
+    WHERE status_tip='ride' AND status_text IN ('in_progress','accepted')
+)
+LIMIT 3;
+
+-- Потоа заврши ја
+CALL sp_complete_ride(p_ride_id => 3000021, p_payment_method => 'CARD');
+
+-- Провери резултат
+SELECT ride_id, status_id, end_time FROM Rides WHERE ride_id = 3000021;
+SELECT * FROM Payments WHERE ride_id = 3000021 ORDER BY payment_id DESC LIMIT 1;
