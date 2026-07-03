@@ -1,0 +1,1055 @@
+INSERT INTO Status (status_tip, status_text) VALUES
+                                                 ('driver', 'active'),
+                                                 ('driver', 'inactive');
+INSERT INTO Status (status_tip, status_text) VALUES
+                                                 ('user', 'active'),
+                                                 ('user', 'inactive'),
+                                                 ('user', 'blocked'),
+                                                 ('user', 'deleted');
+INSERT INTO Status (status_tip, status_text) VALUES
+                                                 ('admin', 'active'),
+                                                 ('admin', 'inactive'),
+                                                 ('admin', 'blocked');
+INSERT INTO Status (status_tip, status_text) VALUES
+                                                 ('ride', 'requested'),
+                                                 ('ride', 'accepted'),
+                                                 ('ride', 'in_progress'),
+                                                 ('ride', 'completed'),
+                                                 ('ride', 'cancelled');
+INSERT INTO Status (status_tip, status_text) VALUES
+                                                 ('payment', 'pending'),
+                                                 ('payment', 'completed'),
+                                                 ('payment', 'failed'),
+                                                 ('payment', 'refunded');
+INSERT INTO Messages (message_text) VALUES
+                                        ('Vaseto baranje e uspesno isprateno'),
+                                        ('Vozacot go prifati vaseto baranje'),
+                                        ('Vozacot go odbi vaseto baranje'),
+                                        ('Vozacot pristigna na lokacijata za podiganje'),
+                                        ('Vozenjeto e otkazano od strana na vozacot'),
+                                        ('Vozenjeto e otkazano od vasa strana'),
+                                        ('Plakjanjeto e uspesno'),
+                                        ('Plakjanjeto ne uspea'),
+                                        ('Nemate dostapni vozaci vo momentot');
+
+INSERT INTO Vehicles_model (Model) VALUES
+                                       ('Volkswagen'),
+                                       ('Skoda'),
+                                       ('Toyota'),
+                                       ('Opel'),
+                                       ('Mercedes-Benz'),
+                                       ('BMW'),
+                                       ('Audi'),
+                                       ('Hyundai'),
+                                       ('Kia'),
+                                       ('Renault');
+
+INSERT INTO Vehicle_types (type_name, description, Vehicles_model_id)
+SELECT
+    m.model_name,
+    CASE
+        WHEN m.model_name IN ('Golf','Octavia','Corolla','Astra','Polo','Fabia','Yaris','Corsa','Elantra','Clio',
+                              'i30','Rio','Megane','Passat','Superb','Camry','Insignia','Tucson','Ceed','Captur')
+            THEN 'Economy class'
+        ELSE 'Luxury class'
+        END as description,
+    m.brand_id
+FROM (
+         SELECT vm.Vehicles_model_id as brand_id, unnest(models) as model_name
+         FROM Vehicles_model vm
+                  JOIN (VALUES
+                            ('Volkswagen', ARRAY['Golf','Passat','Tiguan','Polo','Arteon']),
+                            ('Skoda',      ARRAY['Octavia','Superb','Kodiaq','Fabia','Karoq']),
+                            ('Toyota',     ARRAY['Corolla','Yaris','RAV4','Camry','C-HR']),
+                            ('Opel',       ARRAY['Astra','Insignia','Corsa','Mokka','Grandland']),
+                            ('Mercedes-Benz', ARRAY['E-Class','C-Class','S-Class','GLE','CLA']),
+                            ('BMW',        ARRAY['3 Series','5 Series','X5','X3','1 Series']),
+                            ('Audi',       ARRAY['A4','A6','Q5','A3','Q7']),
+                            ('Hyundai',    ARRAY['Elantra','Tucson','Santa Fe','i30','Kona']),
+                            ('Kia',        ARRAY['Sportage','Ceed','Rio','Sorento','Niro']),
+                            ('Renault',    ARRAY['Clio','Megane','Captur','Kadjar','Talisman'])
+         ) AS t(brand, models) ON vm.Model = t.brand
+     ) m;
+
+INSERT INTO Pricing_rules (base_price, price_per_km, vehicle_type_id)
+SELECT
+    CASE
+        WHEN description = 'Economy class' THEN 80.00
+        ELSE 100.00
+        END as base_price,
+    CASE
+        WHEN description = 'Economy class' THEN 40.00
+        ELSE 60.00
+        END as price_per_km,
+    vehicle_type_id
+FROM Vehicle_types;
+
+INSERT INTO Locations (latitude, longitude, grad, naselba, ulica, broj, created_at)
+WITH street_data AS (
+    SELECT * FROM (VALUES
+                       ('Centar', 42.1322, 21.7144, ARRAY[
+                           '11 Oktomvri', 'Goce Delchev', 'Tane Georgiev', 'Gorce Petrov', 'Plostad Marsal Tito',
+                           'Done Bozhinov', 'Ljubo Atanasov', 'Ivo Lola Ribar', 'Leninova', 'Narodna Revolucija',
+                           'Svetozar Markovic', 'Krste Misirkov', 'Jane Sandanski', 'Dragan Stoparevic', 'Bratstvo Edinstvo',
+                           'Marsal Tito', 'JNA', 'Stiv Naumov', 'Guro Pucar Stari', 'Hristijan Karpos'
+                           ]),
+                       ('Zelen Rid', 42.1400, 21.7000, ARRAY[
+                           'Nikola Tesla', 'Zheleznichka', 'Vidoe Smilevski Bato', 'Vasil Glavinov', 'Sremska',
+                           'Kozjak', 'Osogovska', 'Shar Planina', 'Belasica', 'Ruen',
+                           'Prilepska', 'Bitolska', 'Ohridska', 'Strumicka', 'Vardar',
+                           'Pelister', 'Skopska', 'Tetovska', 'Gevgeliska', 'Veleska'
+                           ]),
+                       ('Goce Delchev', 42.1250, 21.7250, ARRAY[
+                           'Treta Makedonska Udarna Brigada', 'Vera Kotorka', 'Boro Mikic', 'Filip Vtori', 'Srbo Tomovik',
+                           'Zikica Jovanovic Spanac', 'Boro Menkov', 'Milan Zecar', 'Dositej Obradovic', 'Kuzman Josifovski Pitu',
+                           'Tomaki Dimitrovski', 'Todor Velkov', 'Vasko Karangelevski', 'Niksicka', 'Pero Nakov',
+                           'Bajram Shabani', 'Mite Bogoevski', 'Slavko Janevski', 'Gjorce Petrov', 'Kiro Fetak'
+                           ]),
+                       ('Pero Chicho', 42.1150, 21.7300, ARRAY[
+                           'Pero Chicho', '11 Noemvri', 'Boro Mendkov', 'Josip Pancic', 'Banatska',
+                           'Moravska', 'Drinska', 'Sredorek', 'Vojvodina', 'Sumadinska',
+                           'Toplicki Odred', 'Zajecarska', 'Niska', 'Vranjska', 'Leskovacka',
+                           'Sremska', 'Prizrenska', 'Dakovicka', 'Pecka', 'Kosovska'
+                           ]),
+                       ('Karposh', 42.1200, 21.7500, ARRAY[
+                           'Oktomvriska Revolucija', 'Srecko Puzalka', 'Mito Hadzivasilev Jasmin', 'Sava Kovacevic', 'Karposova',
+                           'Metodija Andonov Cento', 'ASNOM', 'Dame Gruev', 'Pitu Guli', 'Partizanska',
+                           'Kiro Burnaz', 'Pere Tosev', 'Gjorce Petrov', 'Hristijan Todorovski', 'Miroslav Krleza',
+                           'Blagoja Stevkovski', 'Kosta Racin', 'Koco Racin', 'Mirce Acev', 'Vasil Antevski'
+                           ]),
+                       ('Bedinje', 42.1500, 21.7100, ARRAY[
+                           'Srbo Tomovikj', 'Zhivko Tomovski', 'Guro Djakovic', 'Karaorman', 'Njegoseva',
+                           'Ivan Milutinovic', 'Mojsa Pijade', 'Zheleznichka', 'Revolucionerna', 'Gjorce Petrov',
+                           'Cede Filipovski', 'Bratstvo', 'Edinstvo', 'Prvomajska', 'Sloboda',
+                           'Proleterska', 'Makedonska', 'Ilindenska', 'Vidoe Smilevski', 'Josip Pancic'
+                           ]),
+                       ('Ajducka Cheshma', 42.1480, 21.6950, ARRAY[
+                           'Bajram Shabani', 'Prilepska', 'Blagoja Stevkovski', 'Romanovska', 'Kumanovska',
+                           'Debarska', 'Krusevska', 'Dojranska', 'Prespanska', 'Gevgeliska',
+                           'Negotinska', 'Kavadarska', 'Radoviska', 'Berovska', 'Delcevska',
+                           'Vinicka', 'Kratovska', 'Zletovska', 'Probistipska', 'Svetinikolska'
+                           ])
+                  ) AS t(naselba, lat_base, lon_base, ulici)
+),
+     expanded AS (
+         SELECT
+             naselba,
+             lat_base,
+             lon_base,
+             unnest(ulici) as ulica
+         FROM street_data
+     ),
+     numbered AS (
+         SELECT
+             naselba,
+             lat_base,
+             lon_base,
+             ulica,
+             row_number() OVER (PARTITION BY naselba ORDER BY ulica) as street_num
+         FROM expanded
+     )
+SELECT
+    (lat_base
+        + (street_num * 0.0008)
+        + (n.num * 0.000045)
+        + (random() * 0.00005 - 0.000025)
+        )::NUMERIC(9,6)                                         AS latitude,
+
+    (lon_base
+        + (street_num * 0.0010)
+        + (n.num * 0.000060)
+        + (random() * 0.00005 - 0.000025)
+        )::NUMERIC(9,6)                                         AS longitude,
+
+    'Kumanovo'                                              AS grad,
+    nd.naselba                                              AS naselba,
+    nd.ulica                                                AS ulica,
+    n.num::VARCHAR                                          AS broj,
+
+    (NOW() - interval '5 years' - (random() * interval '365 days'))::TIMESTAMP AS created_at
+
+FROM numbered nd
+         CROSS JOIN generate_series(1, 100) AS n(num);
+
+INSERT INTO Users (
+    name,
+    username,
+    phone,
+    email,
+    password_hash,
+    created_at,
+    status_id
+)
+WITH data_pools AS (
+    SELECT
+        ARRAY['Marija','Ana','Ivana','Elena','Sara','Katerina','Jana','Mila','Teodora','Kristina','Sofija','Jovana','Tamara','Simona','Biljana','Vesna','Diana','Lidija','Monika','Angela','Ema','Tijana','Marina','Sonja','Nina','Anita','Valentina','Dragana','Ivona','Aleksandra','Natasha','Katarina','Emilija','Andrea','Gabriela','Tea','Danica','Zvezdana','Slobodanka','Gordana','Zorica','Ljubica','Rada','Mirjana','Despina','Kalina','Dafina','Hristina','Anastasija','Snezhana','Zlatka','Stojanka','Stana','Milka','Roksana','Romina','Karolina','Alina','Elina','Selina','Adelina','Darija','Dorotea','Nela','Neda','Zana','Hana','Ines','Iva','Irina','Arina','Lara','Tara','Dara','Kira','Lila','Tina','Jasmina','Bilja','Vanja','Maja','Bojana','Milena','Stefanija','Viktorija','Tatjana','Slavica','Ruzica'] AS f_names,
+        ARRAY['Petar','Marko','Nikola','Stefan','Daniel','Goran','Bojan','Andrej','Filip','Viktor','Aleksandar','Dejan','Zoran','Ilija','Dimitar','Kiril','Hristijan','Vladimir','Vasko','Riste','Martin','Igor','Kristijan','Nenad','Damjan','Darko','Oliver','Simeon','Luka','Emil','Alen','Stojan','Metodija','Vlatko','Boris','Davor','Radoslav','Kosta','Mladen','Mile','Petre','Gjorgi','Trajan','Jovan','Ivan','Spas','Sasho','Zlatko','Bojcho','Risto','Bogdan','Tome','Kole','Vangel','Naum','Gligor','Stanko','Rade','Lazo','Arsen','Milko','Pavle','Dragan','Zdravko','Ilko','Vuk','Dame','Gorancho','Stevo','Miro'] AS m_names,
+        ARRAY['Arsova','Dimitrova','Stojanova','Petrovska','Ilievska','Trajkova','Georgieva','Kostova','Maneva','Ristova','Popova','Jovanova','Nikolova','Mitrevska','Ivanova','Sokolova','Markova','Spasova','Angelova','Vasilevska','Pavlova','Gruevska','Nikolovska','Filipova','Stefanova','Andonova','Zafirova','Koleva','Stamenova','Bojkova','Todorova','Petkova','Hristova','Kitanova','Ilieva','Ruseva','Dimovska','Miloshevska','Petreska','Arnaudova','Georgievska','Markoska','Velkova','Stojkovska','Kirovska','Zlateva','Milevska','Naceva','Spiridonova','Lazarevska','Doneva','Atanasova','Bogdanova','Simeonova','Rangelova','Gligorova','Tasevska','Pancheva','Jankova','Bogoeva'] AS f_surnames,
+        ARRAY['Arsov','Dimitrov','Stojanov','Petrovski','Iliev','Trajkov','Georgiev','Kostov','Manev','Ristov','Popov','Jovanov','Nikolov','Mitrev','Ivanov','Sokolov','Markov','Spasov','Angelov','Vasilev','Pavlov','Gruev','Nikolovski','Filipov','Stefanov','Andonov','Zafirov','Kolev','Stamenov','Bojkov','Todorov','Petkov','Hristov','Kitanov','Rusev','Dimovski','Miloshevski','Petreski','Arnaudov','Georgievski','Markoski','Velkov','Stojkovski','Kirovski','Zlatev','Milevski','Nacev','Spiridonov','Lazarevski','Donev','Atanasov','Bogdanov','Simeonov','Rangelov','Gligorov','Tasev','Panchev','Jankov','Bogoev','Karov','Trifunov','Gavrilov','Savov','Ilkov','Vukov','Zdravkov','Stojanovski','Danev'] AS m_surnames
+)
+SELECT
+    p.fname || ' ' || p.lname                              AS name,
+    LOWER(p.fname || '.' || p.lname || i)                  AS username,
+    '+3897' || (1000000 + i)                               AS phone,
+    LOWER(p.fname || '.' || p.lname || i || '@gmail.com')  AS email,
+    md5(random()::text)                                    AS password_hash,
+    NOW() - (random() * interval '3 years')                AS created_at,
+    (SELECT status_id FROM Status WHERE status_tip = 'user' AND status_text = 'active' LIMIT 1) AS status_id
+FROM generate_series(1, 70000) i
+         CROSS JOIN data_pools d
+         CROSS JOIN LATERAL (
+    SELECT
+        CASE WHEN i % 2 = 0
+                 THEN d.f_names[  (i % cardinality(d.f_names))   + 1]
+             ELSE d.m_names[  (i % cardinality(d.m_names))   + 1]
+            END AS fname,
+        CASE WHEN i % 2 = 0
+                 THEN d.f_surnames[(i % cardinality(d.f_surnames)) + 1]
+             ELSE d.m_surnames[(i % cardinality(d.m_surnames)) + 1]
+            END AS lname
+    ) p;
+
+INSERT INTO Drivers (name, phone, license_number, registration_date, rating, status_id)
+WITH data_pools AS (
+    SELECT
+        ARRAY['Petar','Marko','Nikola','Stefan','Daniel','Goran','Bojan','Andrej','Filip','Viktor',
+            'Aleksandar','Dejan','Zoran','Ilija','Dimitar','Kiril','Hristijan','Vladimir','Vasko','Riste',
+            'Martin','Igor','Damjan','Darko','Oliver','Luka','Emil','Stojan','Vlatko','Boris',
+            'Radoslav','Kosta','Mladen','Mile','Petre','Gjorgi','Jovan','Ivan','Sasho','Zlatko',
+            'Bogdan','Tome','Naum','Gligor','Stanko','Rade','Lazo','Arsen','Pavle','Dragan'] AS m_names,
+        ARRAY['Arsov','Dimitrov','Stojanov','Petrovski','Iliev','Trajkov','Georgiev','Kostov','Manev',
+            'Ristov','Popov','Jovanov','Nikolov','Mitrev','Ivanov','Sokolov','Markov','Spasov','Angelov',
+            'Vasilev','Pavlov','Gruev','Nikolovski','Filipov','Stefanov','Andonov','Zafirov','Kolev',
+            'Stamenov','Bojkov','Todorov','Petkov','Hristov','Kitanov','Rusev','Dimovski','Miloshevski',
+            'Petreski','Arnaudov','Georgievski','Markoski','Velkov','Stojkovski','Kirovski','Zlatev',
+            'Milevski','Spiridonov','Lazarevski','Atanasov','Bogdanov'] AS m_surnames
+)
+SELECT
+    p.fname || ' ' || p.lname                                          AS name,
+    '+3897' || (2000000 + i)                                           AS phone,
+    CHR(65 + (i % 26)) || LPAD((floor(random() * 9000000) + 1000000)::int::text, 7, '0') AS license_number,
+    (NOW() - interval '3 years' - (random() * interval '2 years'))::DATE AS registration_date,
+    ROUND((3.5 + random() * 1.5)::numeric, 2)                          AS rating,
+    (SELECT status_id FROM Status WHERE status_tip = 'driver' AND status_text = 'active' LIMIT 1) AS status_id
+FROM generate_series(1, 200) i
+         CROSS JOIN data_pools d
+         CROSS JOIN LATERAL (
+    SELECT
+        d.m_names[(i % cardinality(d.m_names)) + 1]       AS fname,
+        d.m_surnames[(i % cardinality(d.m_surnames)) + 1]  AS lname
+    ) p;
+
+INSERT INTO Admins (name, username, phone, email, password_hash, created_at, status_id)
+VALUES
+    ('Aleksandar Dimitrov', 'admin.aleksandar', '+38971100001', 'aleksandar.dimitrov@taxikumanovo.mk', md5(random()::text), NOW() - interval '4 years', (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1)),
+    ('Marija Petrovska',    'admin.marija',     '+38971100002', 'marija.petrovska@taxikumanovo.mk',    md5(random()::text), NOW() - interval '3 years', (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1)),
+    ('Nikola Trajkov',      'admin.nikola',     '+38971100003', 'nikola.trajkov@taxikumanovo.mk',      md5(random()::text), NOW() - interval '3 years', (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1)),
+    ('Elena Georgieva',     'admin.elena',      '+38971100004', 'elena.georgieva@taxikumanovo.mk',     md5(random()::text), NOW() - interval '2 years', (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1)),
+    ('Stefan Iliev',        'admin.stefan',     '+38971100005', 'stefan.iliev@taxikumanovo.mk',        md5(random()::text), NOW() - interval '2 years', (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1)),
+    ('Ana Nikolova',        'admin.ana',        '+38971100006', 'ana.nikolova@taxikumanovo.mk',        md5(random()::text), NOW() - interval '1 year',  (SELECT status_id FROM Status WHERE status_tip = 'admin' AND status_text = 'active' LIMIT 1));
+
+INSERT INTO Vehicle_ownership (Plate, Traffic_permit, Color, year, vehicle_type_id)
+WITH colors AS (
+    SELECT ARRAY['Crna','Bela','Siva','Srebrena','Crvena','Sina','Zelena','Beza','Kafena','Temnosina'] AS cols
+)
+SELECT
+    -- Табличка: 2 букви + 3 цифри + 2 букви, пр: SK123AB
+    'KU' ||
+    LPAD((100 + i)::text, 4, '0') ||
+    CHR(65 + ((i * 5) % 26)) || CHR(65 + ((i * 7) % 26))      AS Plate,
+
+    -- Сообраќајна: KU + 6 цифри
+    CHR(65 + (i % 26)) || CHR(65 + ((i * 3) % 26)) || LPAD((100000 + i)::text, 6, '0')                   AS Traffic_permit,
+
+    -- Боја
+    c.cols[(i % cardinality(c.cols)) + 1]                      AS Color,
+
+    -- Година: возилата се од 2010 до 2023
+    2010 + (i % 14)                                            AS year,
+
+    -- vehicle_type_id: рандом од 1 до 50
+    (1 + (i % 50))                                             AS vehicle_type_id
+
+FROM generate_series(1, 300) i
+         CROSS JOIN colors c;
+
+INSERT INTO Active_drivers (driver_id, current_location_id, is_available, working_start, working_end,vehicle_ownership_id)
+SELECT
+    d.driver_id,
+    -- Random location_id од постоечките локации
+    (1 + (d.driver_id % 14000))                                    AS current_location_id,
+    -- 70% се available, 30% се зафатени
+    CASE WHEN d.driver_id % 10 < 7 THEN true ELSE false END        AS is_available,
+    -- Работната смена почнала пред 1-8 часа
+    (NOW() - (random() * interval '8 hours'))::TIMESTAMP            AS working_start,
+    -- Работната смена завршува за 2-10 часа
+    (NOW() + (random() * interval '10 hours'))::TIMESTAMP           AS working_end,
+    -- Да се знае кое авто моментлано го вози
+    CASE
+        WHEN d.driver_id < 100
+            THEN d.driver_id + (random(0,1) * 200)
+        ELSE d.driver_id
+        END AS vehicle_ownership_id
+FROM Drivers d
+-- Земаме само 150 од 200 возачи (75%)
+WHERE d.driver_id % 4 != 0
+LIMIT 150;
+
+INSERT INTO Drivers_Vehicle_ownership (driver_id, Vehicle_ownership_id)
+
+-- Sekoj vozac dobiva svoe primарно vozilo (1:1)
+SELECT
+    d.driver_id,
+    -- Voziloto se mapira deterministicki: vozac 1→vozilo 1, vozac 2→vozilo 2 ...
+    d.driver_id AS Vehicle_ownership_id
+FROM Drivers d
+WHERE d.driver_id <= 200  -- site 200 vozaci
+
+UNION ALL
+
+-- Prvite 100 vozaci dobivaat i vtoro vozilo (od 201 do 300)
+SELECT
+    d.driver_id,
+    d.driver_id + 200 AS Vehicle_ownership_id
+FROM Drivers d
+WHERE d.driver_id <= 100;
+
+DO $$
+    DECLARE
+        batch_size   INT := 1000000;
+        total_rows   INT := 10000000;
+        batches      INT := total_rows / batch_size;
+        b            INT;
+
+        max_user     INT;
+        max_driver   INT;
+        max_location INT;
+
+        sid_requested   INT;
+        sid_accepted    INT;
+        sid_in_progress INT;
+        sid_completed   INT;
+        sid_cancelled   INT;
+    BEGIN
+        SELECT MAX(user_id)     INTO max_user     FROM Users;
+        SELECT MAX(driver_id)   INTO max_driver   FROM Drivers;
+        SELECT MAX(location_id) INTO max_location FROM Locations;
+
+        SELECT status_id INTO sid_requested   FROM Status WHERE status_tip='ride' AND status_text='requested'   LIMIT 1;
+        SELECT status_id INTO sid_accepted    FROM Status WHERE status_tip='ride' AND status_text='accepted'    LIMIT 1;
+        SELECT status_id INTO sid_in_progress FROM Status WHERE status_tip='ride' AND status_text='in_progress' LIMIT 1;
+        SELECT status_id INTO sid_completed   FROM Status WHERE status_tip='ride' AND status_text='completed'   LIMIT 1;
+        SELECT status_id INTO sid_cancelled   FROM Status WHERE status_tip='ride' AND status_text='cancelled'   LIMIT 1;
+
+        RAISE NOTICE 'max_user=%, max_driver=%, max_location=%', max_user, max_driver, max_location;
+
+        FOR b IN 1..batches LOOP
+
+                INSERT INTO Rides (
+                    user_id,
+                    driver_id,
+                    pickup_location_id,
+                    dropoff_location_id,
+                    status_id,
+                    request_time,
+                    pickup_time,
+                    start_time,
+                    end_time,
+                    distance_km,
+                    final_price,
+                    discount_percentage,
+                    vehicle_ownership_id
+                )
+                WITH
+
+                    -- --------------------------------------------------------
+                    -- CTE 1: Realna cena po vozac spored tipot na voziloto
+                    --        Economy:  base=80,  per_km=40
+                    --        Luxury:   base=100, per_km=60
+                    --        Ako ima 2 vozila → go zemame luksoznoto (MAX cena)
+                    -- --------------------------------------------------------
+                    driver_pricing AS (
+                        SELECT
+                            dvo.driver_id,
+                            MAX(pr.base_price)    AS base_price,
+                            MAX(pr.price_per_km)  AS price_per_km,
+                            MAX(vt.description)   AS vehicle_class
+                        FROM Drivers_Vehicle_ownership dvo
+                                 JOIN Vehicle_ownership vo ON dvo.Vehicle_ownership_id = vo.Vehicle_ownership_id
+                                 JOIN Vehicle_types     vt ON vo.vehicle_type_id       = vt.vehicle_type_id
+                                 JOIN Pricing_rules     pr ON vt.vehicle_type_id       = pr.vehicle_type_id
+                        GROUP BY dvo.driver_id
+                    ),
+
+                    -- --------------------------------------------------------
+                    -- CTE 2: Base pool so site ogranichuvanja primeneti
+                    -- --------------------------------------------------------
+                    base_pool AS (
+                        SELECT
+                            s.i,
+
+                            -- USER / DRIVER (realni, razlichni)
+                            1 + (s.i % max_user)                                AS user_id,
+                            1 + ((s.i + floor(random() * 200000)+ 37)::INTEGER % max_driver)                       AS driver_id,
+
+                            -- LOKACII
+                            1 + (s.i + floor(random() * 200000))::INTEGER % max_location                          AS pickup_location_id,
+                            1 + ((s.i + floor(random() * 200000)+ (14000 / 2))::INTEGER % max_location)    AS dropoff_location_id,
+
+                            -- STATUS
+                            CASE
+                                WHEN (s.i % 20) = 0         THEN sid_requested
+                                WHEN (s.i % 20) IN (1, 2)   THEN sid_accepted
+                                WHEN (s.i % 20) IN (3, 4)   THEN sid_in_progress
+                                WHEN (s.i % 20) IN (18, 19) THEN sid_cancelled
+                                ELSE                              sid_completed
+                                END                                                 AS status_id,
+
+                            -- BASE TIME: random den (poslednite 2 godini), cas 06:00-23:00
+                            date_trunc('day', now() - (floor(random() * 730) * interval '1 day'))
+                                + (21600 + floor(random() * 61200)) * interval '1 second'
+                                AS request_time,
+
+                            -- DISTANCA: 0.5 .. 10.0 km  (OGRANICHENO NA MAX 10km)
+                            ROUND((0.5 + random() * 9.5)::numeric, 2)          AS distance_km
+
+                        FROM generate_series(
+                                     (b - 1) * batch_size + 1,
+                                     b      * batch_size
+                             ) s(i)
+                    ),
+
+                    -- --------------------------------------------------------
+                    -- CTE 3: Presmetaj popust i vreminja vrz osnova na distanca
+                    -- --------------------------------------------------------
+                    enriched AS (
+                        SELECT
+                            bp.*,
+
+                            -- POPUST:
+                            --   >= 9km  → 10%
+                            --   <  9km  →  0%
+                            CASE
+                                WHEN bp.distance_km >= 9 THEN 10.0
+                                ELSE                          0.0
+                                END                                                 AS discount_pct,
+
+                            -- VREMINJA (site od ista request_time baza):
+                            -- pickup  = request + 2..10 min
+                            bp.request_time
+                                + (2 + floor(random() * 9))  * interval '1 minute'
+                                                                                    AS pickup_time,
+
+                            -- start   = request + 3..13 min  (sekogash posle pickup)
+                            bp.request_time
+                                + (3 + floor(random() * 11)) * interval '1 minute'
+                                                                                    AS start_time,
+
+                            -- end     = start  + 5..15 min  (OGRANICHENO: min 5, max 15)
+                            bp.request_time
+                                + (3 + floor(random() * 11)) * interval '1 minute'  -- ista start baza
+                                + (5 + floor(random() * 11)) * interval '1 minute'  -- + 5..15 min
+                                                                                    AS end_time
+
+                        FROM base_pool bp
+                    )
+
+                -- --------------------------------------------------------
+                -- FINALEN SELECT: JOIN so realni ceni od vozacovoto vozilo
+                -- --------------------------------------------------------
+                SELECT
+                    en.user_id,
+                    en.driver_id,
+                    en.pickup_location_id,
+                    en.dropoff_location_id,
+                    en.status_id,
+
+                    en.request_time,
+                    en.pickup_time,
+                    en.start_time,
+                    en.end_time,
+
+                    en.distance_km,
+
+                    -- CENA spored tipot na voziloto:
+                    --   Economy → (80  + km * 40) * (1 - popust%)
+                    --   Luxury  → (100 + km * 60) * (1 - popust%)
+                    --   Ako vozacot nema vozilo → fallback na Economy cena
+                    ROUND(
+                            (COALESCE(dp.base_price, 80) + en.distance_km * COALESCE(dp.price_per_km, 40))
+                                * (1.0 - en.discount_pct / 100.0)
+                                ::numeric, 2)                                           AS final_price,
+
+                    en.discount_pct                                         AS discount_percentage,
+                    CASE
+                        WHEN en.driver_id < 100
+                            THEN en.driver_id + (random(0,1) * 200)
+                        ELSE en.driver_id
+                        END AS vehicle_ownership_id
+
+
+                FROM enriched en
+                         LEFT JOIN driver_pricing dp ON en.driver_id = dp.driver_id;
+
+                RAISE NOTICE 'Batch % / % zavrshen — % redovi vkupno', b, batches, b * batch_size;
+
+            END LOOP;
+
+        update rides set pickup_location_id = 1 + (Rides.ride_id + floor(random() * 200000))::INTEGER% max_location
+        where  dropoff_location_id=pickup_location_id;
+
+        RAISE NOTICE '*** GOTOVO: 10 000 000 redovi vo Rides ***';
+    END $$;
+
+
+DO $$
+    DECLARE
+        batch_size  INT := 1000000;
+        total_rows  INT := 10000000;
+        batches     INT := total_rows / batch_size;
+        b           INT;
+
+        -- Payment method IDs
+        pm_cash     INT;
+        pm_card     INT;
+
+        -- Payment status IDs
+        sid_pending   INT;
+        sid_completed INT;
+        sid_failed    INT;
+        sid_refunded  INT;
+
+        -- Ride status IDs (za da odredime payment status)
+        rid_completed   INT;
+        rid_cancelled   INT;
+
+    BEGIN
+        -- Payment methods
+        SELECT payment_method_id INTO pm_cash FROM Payment_methods WHERE payment_tip = 'CASH' LIMIT 1;
+        SELECT payment_method_id INTO pm_card FROM Payment_methods WHERE payment_tip = 'CARD' LIMIT 1;
+
+        -- Payment statusi
+        SELECT status_id INTO sid_pending   FROM Status WHERE status_tip='payment' AND status_text='pending'   LIMIT 1;
+        SELECT status_id INTO sid_completed FROM Status WHERE status_tip='payment' AND status_text='completed' LIMIT 1;
+        SELECT status_id INTO sid_failed    FROM Status WHERE status_tip='payment' AND status_text='failed'    LIMIT 1;
+        SELECT status_id INTO sid_refunded  FROM Status WHERE status_tip='payment' AND status_text='refunded'  LIMIT 1;
+
+        -- Ride statusi
+        SELECT status_id INTO rid_completed FROM Status WHERE status_tip='ride' AND status_text='completed'  LIMIT 1;
+        SELECT status_id INTO rid_cancelled FROM Status WHERE status_tip='ride' AND status_text='cancelled'  LIMIT 1;
+
+        RAISE NOTICE 'pm_cash=%, pm_card=%', pm_cash, pm_card;
+        RAISE NOTICE 'payment statusi: pending=%, completed=%, failed=%, refunded=%',
+            sid_pending, sid_completed, sid_failed, sid_refunded;
+
+        FOR b IN 1..batches LOOP
+
+                INSERT INTO Payments (
+                    amount,
+                    payment_method_id,
+                    payment_time,
+                    ride_id,
+                    status_id
+                )
+                SELECT
+                    -- Amount = tocnata cena od ridot
+                    r.final_price                                               AS amount,
+
+                    -- Payment method: 60% CASH, 40% CARD
+                    CASE
+                        WHEN (r.ride_id % 10) < 6 THEN pm_cash
+                        ELSE                           pm_card
+                        END                                                         AS payment_method_id,
+
+                    -- Payment time = end_time + 1..5 min
+                    r.end_time + (1 + floor(random() * 5)) * interval '1 minute'
+                        AS payment_time,
+
+                    r.ride_id                                                   AS ride_id,
+
+                    -- Payment status spored status na ridot:
+                    --   completed   → completed
+                    --   cancelled   → 50% failed, 50% refunded
+                    --   site drugi  → pending
+                    CASE
+                        WHEN r.status_id = rid_completed THEN sid_completed
+                        WHEN r.status_id = rid_cancelled THEN
+                            CASE WHEN r.ride_id % 2 = 0 THEN sid_failed
+                                 ELSE                        sid_refunded
+                                END
+                        ELSE sid_pending
+                        END                                                         AS status_id
+
+                FROM Rides r
+                WHERE r.ride_id BETWEEN (b - 1) * batch_size + 1
+                          AND b       * batch_size;
+
+                RAISE NOTICE 'Batch % / % zavrshen — % payments vkupno', b, batches, b * batch_size;
+
+            END LOOP;
+
+        RAISE NOTICE '*** GOTOVO: 10 000 000 redovi vo Payments ***';
+    END $$;
+
+
+INSERT INTO Cancellations (
+    cancelled_by_type,
+    cancelled_by_id,
+    reason,
+    cancellation_fee,
+    created_at,
+    ride_id
+)
+WITH
+
+-- Ride status za cancelled
+cancelled_status AS (
+    SELECT status_id FROM Status WHERE status_tip='ride' AND status_text='cancelled' LIMIT 1
+),
+
+-- Realna base_price po vozac (Economy=80, Luxury=100)
+driver_pricing AS (
+    SELECT
+        dvo.driver_id,
+        MAX(pr.base_price) AS base_price
+    FROM Drivers_Vehicle_ownership dvo
+             JOIN Vehicle_ownership vo ON dvo.Vehicle_ownership_id = vo.Vehicle_ownership_id
+             JOIN Vehicle_types     vt ON vo.vehicle_type_id       = vt.vehicle_type_id
+             JOIN Pricing_rules     pr ON vt.vehicle_type_id       = pr.vehicle_type_id
+    GROUP BY dvo.driver_id
+),
+
+-- Samo cancelled rides + row_number za ramномерна distribucija
+cancelled_rides AS (
+    SELECT
+        r.ride_id,
+        r.user_id,
+        r.driver_id,
+        r.request_time,
+        COALESCE(dp.base_price, 80)             AS base_price,
+        -- row_number() garantira 0..9 ramномерно bez zavisnost od ride_id vrednostite
+        (row_number() OVER (ORDER BY r.ride_id) - 1) % 10   AS rn
+    FROM Rides r
+             JOIN cancelled_status cs ON r.status_id = cs.status_id
+             LEFT JOIN driver_pricing dp ON r.driver_id = dp.driver_id
+)
+
+SELECT
+    -- cancelled_by_type: 50% USER (0-4), 30% DRIVER (5-7), 20% ADMIN (8-9)
+    CASE
+        WHEN rn IN (0,1,2,3,4) THEN 'USER'
+        WHEN rn IN (5,6,7)     THEN 'DRIVER'
+        ELSE                        'ADMIN'
+        END                                                         AS cancelled_by_type,
+
+    -- cancelled_by_id: realen ID
+    CASE
+        WHEN rn IN (0,1,2,3,4) THEN user_id
+        WHEN rn IN (5,6,7)     THEN driver_id
+        ELSE                        1 + (ride_id % 6)
+        END                                                         AS cancelled_by_id,
+
+    -- Reason spored tipot
+    CASE
+        WHEN rn IN (0,1,2,3,4) THEN
+            CASE (ride_id % 3)
+                WHEN 0 THEN 'Променив планови и повеќе не ми треба превоз'
+                WHEN 1 THEN 'Чекањето беше предолго'
+                ELSE        'Внесов погрешна локација за подигање'
+                END
+        WHEN rn IN (5,6,7) THEN
+            CASE (ride_id % 3)
+                WHEN 0 THEN 'Не можам да ја пронајдам точната локација на патникот'
+                WHEN 1 THEN 'Патникот не се појави на местото за подигање'
+                ELSE        'Технички проблем со возилото'
+                END
+        ELSE
+            CASE (ride_id % 3)
+                WHEN 0 THEN 'Вожњата е откажана поради сомнителна активност'
+                WHEN 1 THEN 'Откажано поради дупликат барање'
+                ELSE        'Откажано поради системска грешка'
+                END
+        END                                                         AS reason,
+
+    -- Fee: samo USER plaka, Driver i Admin = 0
+    CASE
+        WHEN rn IN (0,1,2,3,4) THEN base_price
+        ELSE                        0.00
+        END                                                         AS cancellation_fee,
+
+    -- created_at = request_time + 1..30 min
+    request_time + (1 + floor(random() * 30)) * interval '1 minute'
+                                                                    AS created_at,
+
+    ride_id
+FROM cancelled_rides;
+
+
+DO $$
+    DECLARE
+        batch_size INT := 500000;
+        b          INT;
+        max_ride   INT;
+        batches    INT;
+
+        mid_1 INT; mid_2 INT; mid_3 INT; mid_4 INT;
+        mid_5 INT; mid_6 INT; mid_7 INT; mid_8 INT; mid_9 INT;
+
+        sid_notif_sent   INT;
+        sid_notif_fail   INT;
+
+        rid_completed   INT;
+        rid_cancelled   INT;
+        rid_in_progress INT;
+        rid_accepted    INT;
+        rid_requested   INT;
+
+        pay_completed INT;
+        pay_failed    INT;
+    BEGIN
+        -- Message IDs
+        SELECT message_id INTO mid_1 FROM Messages WHERE message_text LIKE 'Vaseto baranje e uspesno%'                LIMIT 1;
+        SELECT message_id INTO mid_2 FROM Messages WHERE message_text LIKE 'Vozacot go prifati%'                      LIMIT 1;
+        SELECT message_id INTO mid_3 FROM Messages WHERE message_text LIKE 'Vozacot go odbi%'                         LIMIT 1;
+        SELECT message_id INTO mid_4 FROM Messages WHERE message_text LIKE 'Vozacot pristigna%'                       LIMIT 1;
+        SELECT message_id INTO mid_5 FROM Messages WHERE message_text LIKE 'Vozenjeto e otkazano od strana na vozac%' LIMIT 1;
+        SELECT message_id INTO mid_6 FROM Messages WHERE message_text LIKE 'Vozenjeto e otkazano od vasa%'            LIMIT 1;
+        SELECT message_id INTO mid_7 FROM Messages WHERE message_text LIKE 'Plakjanjeto e uspesno%'                   LIMIT 1;
+        SELECT message_id INTO mid_8 FROM Messages WHERE message_text LIKE 'Plakjanjeto ne uspea%'                    LIMIT 1;
+        SELECT message_id INTO mid_9 FROM Messages WHERE message_text LIKE 'Nemate dostapni%'                         LIMIT 1;
+
+        -- Notification statusi (koristime ride status kako proxy za sent/fail)
+        SELECT status_id INTO sid_notif_sent FROM Status WHERE status_tip='ride' AND status_text='completed' LIMIT 1;
+        SELECT status_id INTO sid_notif_fail FROM Status WHERE status_tip='ride' AND status_text='cancelled' LIMIT 1;
+
+        -- Ride statusi
+        SELECT status_id INTO rid_completed   FROM Status WHERE status_tip='ride' AND status_text='completed'   LIMIT 1;
+        SELECT status_id INTO rid_cancelled   FROM Status WHERE status_tip='ride' AND status_text='cancelled'   LIMIT 1;
+        SELECT status_id INTO rid_in_progress FROM Status WHERE status_tip='ride' AND status_text='in_progress' LIMIT 1;
+        SELECT status_id INTO rid_accepted    FROM Status WHERE status_tip='ride' AND status_text='accepted'    LIMIT 1;
+        SELECT status_id INTO rid_requested   FROM Status WHERE status_tip='ride' AND status_text='requested'   LIMIT 1;
+
+        -- Payment statusi
+        SELECT status_id INTO pay_completed FROM Status WHERE status_tip='payment' AND status_text='completed' LIMIT 1;
+        SELECT status_id INTO pay_failed    FROM Status WHERE status_tip='payment' AND status_text='failed'    LIMIT 1;
+
+        SELECT MAX(ride_id) INTO max_ride FROM Rides;
+        batches := CEIL(max_ride::numeric / batch_size);
+
+        RAISE NOTICE 'Pocnuvame so % batches po % rides', batches, batch_size;
+
+        -- ===========================================================
+        --  FLOW 1: COMPLETED rides
+        --  Poraki: 1→2→4→7
+        --  Vreminja: request→pickup→start→end+2min
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+                SELECT * FROM (
+
+                                  -- Poraka 1: Baranjeto e uspesno isprateno → request_time
+                                  SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_completed
+
+                                  UNION ALL
+
+                                  -- Poraka 2: Vozacot go prifati → pickup_time
+                                  SELECT mid_2, r.pickup_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_completed
+
+                                  UNION ALL
+
+                                  -- Poraka 4: Vozacot pristigna → start_time
+                                  SELECT mid_4, r.start_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_completed
+
+                                  UNION ALL
+
+                                  -- Poraka 7: Plakjanjeto uspesno → end_time + 2..5 min
+                                  SELECT mid_7,
+                                         r.end_time + (2 + floor(random()*4)) * interval '1 minute',
+                                         r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                           JOIN Payments p ON r.ride_id = p.ride_id AND p.status_id = pay_completed
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_completed
+
+                              ) flows;
+
+                RAISE NOTICE '[COMPLETED] Batch % / %', b, batches;
+            END LOOP;
+
+        -- ===========================================================
+        --  FLOW 2: CANCELLED BY USER
+        --  Poraki: 1→6→8
+        --  Vreminja: request→request+1..10min→end+2min
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+                SELECT * FROM (
+
+                                  -- Poraka 1: Baranjeto isprateno → request_time
+                                  SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'USER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                                  UNION ALL
+
+                                  -- Poraka 6: Otkazano od vasa strana → request_time + 1..10 min
+                                  SELECT mid_6,
+                                         r.request_time + (1 + floor(random()*10)) * interval '1 minute',
+                                         r.user_id, r.ride_id, sid_notif_fail
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'USER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                                  UNION ALL
+
+                                  -- Poraka 8: Plakjanjeto ne uspea → end_time + 2..5 min
+                                  SELECT mid_8,
+                                         r.end_time + (2 + floor(random()*4)) * interval '1 minute',
+                                         r.user_id, r.ride_id, sid_notif_fail
+                                  FROM Rides r
+                                           JOIN Payments p ON r.ride_id = p.ride_id AND p.status_id = pay_failed
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'USER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                              ) flows;
+
+                RAISE NOTICE '[CANCELLED USER] Batch % / %', b, batches;
+            END LOOP;
+
+        -- ===========================================================
+        --  FLOW 3: CANCELLED BY DRIVER
+        --  Poraki: 1→2→5
+        --  Vreminja: request→pickup→request+5..15min
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+                SELECT * FROM (
+
+                                  -- Poraka 1: Baranjeto isprateno → request_time
+                                  SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'DRIVER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                                  UNION ALL
+
+                                  -- Poraka 2: Vozacot prifati → pickup_time
+                                  SELECT mid_2, r.pickup_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'DRIVER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                                  UNION ALL
+
+                                  -- Poraka 5: Otkazano od vozac → request_time + 5..15 min
+                                  SELECT mid_5,
+                                         r.request_time + (5 + floor(random()*11)) * interval '1 minute',
+                                         r.user_id, r.ride_id, sid_notif_fail
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'DRIVER'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                              ) flows;
+
+                RAISE NOTICE '[CANCELLED DRIVER] Batch % / %', b, batches;
+            END LOOP;
+
+        -- ===========================================================
+        --  FLOW 4: CANCELLED BY ADMIN
+        --  Poraki: 1→9
+        --  Vreminja: request→request (momentalno)
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+                SELECT * FROM (
+
+                                  -- Poraka 1: Baranjeto isprateno → request_time
+                                  SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'ADMIN'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                                  UNION ALL
+
+                                  -- Poraka 9: Nema dostapni vozaci → request_time (vednas)
+                                  SELECT mid_9, r.request_time, r.user_id, r.ride_id, sid_notif_fail
+                                  FROM Rides r
+                                           JOIN Cancellations c ON r.ride_id = c.ride_id AND c.cancelled_by_type = 'ADMIN'
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id = rid_cancelled
+
+                              ) flows;
+
+                RAISE NOTICE '[CANCELLED ADMIN] Batch % / %', b, batches;
+            END LOOP;
+
+        -- ===========================================================
+        --  FLOW 5: ACCEPTED / IN_PROGRESS rides
+        --  Poraki: 1→2→4
+        --  Voznjata e vo tek, nema kraj i plakjanje uste
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+                SELECT * FROM (
+
+                                  -- Poraka 1: Baranjeto isprateno → request_time
+                                  SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id IN (rid_accepted, rid_in_progress)
+
+                                  UNION ALL
+
+                                  -- Poraka 2: Vozacot prifati → pickup_time
+                                  SELECT mid_2, r.pickup_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id IN (rid_accepted, rid_in_progress)
+
+                                  UNION ALL
+
+                                  -- Poraka 4: Vozacot pristigna → start_time
+                                  SELECT mid_4, r.start_time, r.user_id, r.ride_id, sid_notif_sent
+                                  FROM Rides r
+                                  WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                                    AND r.status_id IN (rid_accepted, rid_in_progress)
+
+                              ) flows;
+
+                RAISE NOTICE '[ACCEPTED/IN_PROGRESS] Batch % / %', b, batches;
+            END LOOP;
+
+        -- ===========================================================
+        --  FLOW 6: REQUESTED rides
+        --  Poraka: samo 1
+        --  Barano no vozac uste ne odgovoril
+        -- ===========================================================
+        FOR b IN 1..batches LOOP
+                INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+
+                -- Poraka 1: Baranjeto isprateno → request_time
+                SELECT mid_1, r.request_time, r.user_id, r.ride_id, sid_notif_sent
+                FROM Rides r
+                WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                  AND r.status_id = rid_requested;
+
+                RAISE NOTICE '[REQUESTED] Batch % / %', b, batches;
+            END LOOP;
+
+        RAISE NOTICE '*** GOTOVO: Site notification flows se vmetnat! ***';
+    END $$;
+
+
+DO $$
+    DECLARE
+        batch_size INT := 1000000;
+        total_rows INT := 10000000;
+        batches    INT := total_rows / batch_size;
+        b          INT;
+
+        rid_completed INT;
+    BEGIN
+        SELECT status_id INTO rid_completed
+        FROM Status WHERE status_tip='ride' AND status_text='completed' LIMIT 1;
+
+        RAISE NOTICE 'rid_completed=%', rid_completed;
+
+        FOR b IN 1..batches LOOP
+
+                INSERT INTO Ratings (
+                    score,
+                    comment,
+                    created_at,
+                    ride_id,
+                    user_id,
+                    driver_id
+                )
+                WITH
+
+                    -- CTE 1: driver ratings so floor/ceil proporcii
+                    driver_score_dist AS (
+                        SELECT
+                            driver_id,
+                            rating                              AS exact_rating,
+                            FLOOR(rating)::INT                  AS score_low,   -- pr: 4
+                            CEIL(rating)::INT                   AS score_high,  -- pr: 5
+                            -- Proporcija: kolku % treba da bidat score_high
+                            -- pr: rating=4.25 → frac=0.25 → 25% se 5, 75% se 4
+                            (rating - FLOOR(rating))            AS frac_high
+                        FROM Drivers
+                    ),
+
+                    -- CTE 2: Completed rides vo ovoj batch so redni broevi
+                    batch_rides AS (
+                        SELECT
+                            r.ride_id,
+                            r.user_id,
+                            r.driver_id,
+                            r.end_time,
+                            -- row_number per driver za da odredime score_low ili score_high
+                            ROW_NUMBER() OVER (
+                                PARTITION BY r.driver_id
+                                ORDER BY r.ride_id
+                                ) AS rn_per_driver
+                        FROM Rides r
+                        WHERE r.ride_id BETWEEN (b-1)*batch_size+1 AND b*batch_size
+                          AND r.status_id = rid_completed
+                    )
+
+                SELECT
+                    -- Score: ako (rn_per_driver % 100) / 100.0 < frac_high → score_high
+                    --        inaku → score_low
+                    -- Pr: frac=0.25 → prv 25 od 100 dobbivaat score 5, ostatokot 4
+                    CASE
+                        WHEN dsd.score_low = dsd.score_high
+                            THEN dsd.score_low  -- celen broj, pr rating=4.0
+                        WHEN (br.rn_per_driver % 100)::numeric / 100.0 < dsd.frac_high
+                            THEN dsd.score_high
+                        ELSE
+                            dsd.score_low
+                        END                                                         AS score,
+
+                    -- Comment: 20% imaat komentar, 80% NULL
+                    CASE (br.ride_id % 5)
+                        WHEN 0 THEN
+                            CASE (br.ride_id % 10)
+                                WHEN 0 THEN 'Odlicna voznja, mnogu profesionalen vozac!'
+                                WHEN 5 THEN 'Vozacot bese tocen i ljubezen.'
+                                ELSE        'Preporачuvam, brza i sigurna voznja.'
+                                END
+                        ELSE NULL
+                        END                                                         AS comment,
+
+                    -- created_at = end_time na ridot
+                    br.end_time                                                 AS created_at,
+
+                    br.ride_id,
+                    br.user_id,
+                    br.driver_id
+
+                FROM batch_rides br
+                         JOIN driver_score_dist dsd ON br.driver_id = dsd.driver_id;
+
+                RAISE NOTICE 'Batch % / % zavrshen', b, batches;
+            END LOOP;
+
+        RAISE NOTICE '*** GOTOVO: Ratings vmetnat ***';
+    END $$;
+
