@@ -1,0 +1,104 @@
+-- ============================================================
+--  TRIGGER1: автоматски го ажурира rating на возачот во Drivers табелата секој пат кога некој ќе додаде нов рејтинг во Ratings табелата.
+-- ============================================================
+
+-- Прво правиме функција која тригерот ја повикува
+CREATE OR REPLACE FUNCTION fn_update_driver_rating()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE Drivers
+    SET rating = (
+        SELECT ROUND(AVG(score)::NUMERIC, 2)
+        FROM Ratings
+        WHERE driver_id = NEW.driver_id
+    )
+    WHERE driver_id = NEW.driver_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Потоа го правиме тригерот
+CREATE OR REPLACE TRIGGER trg_update_driver_rating
+AFTER INSERT ON Ratings
+FOR EACH ROW
+EXECUTE FUNCTION fn_update_driver_rating();
+
+-- Погледни го рејтингот пред (4.77)
+SELECT driver_id, rating FROM Drivers WHERE driver_id = 40;
+
+-- Додади нов рејтинг
+INSERT INTO Ratings (score, comment, created_at, ride_id, user_id, driver_id)
+VALUES (5, 'Odlichen vozac!', NOW(), 6675760, 25761, 40);
+
+-- Погледни го рејтингот после → треба автоматски да се смени
+SELECT driver_id, rating FROM Drivers WHERE driver_id = 40;
+
+
+-- ============================================================
+--  TRIGGER2:автоматски вметнува нотификација во Notifications кога се менува статусот на вожњата.
+-- ============================================================
+CREATE OR REPLACE FUNCTION fn_notify_on_ride_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_message_id    INT;
+    v_status_text   VARCHAR;
+    v_notif_status  INT;
+BEGIN
+    -- Земи го текстот на новиот статус
+    SELECT status_text INTO v_status_text
+    FROM Status WHERE status_id = NEW.status_id;
+
+    -- Одреди која порака да се прати според новиот статус
+    v_message_id := CASE v_status_text
+        WHEN 'accepted'    THEN (SELECT message_id FROM Messages WHERE message_text LIKE 'Vozacot go prifati%'       LIMIT 1)
+        WHEN 'in_progress' THEN (SELECT message_id FROM Messages WHERE message_text LIKE 'Vozacot pristigna%'        LIMIT 1)
+        WHEN 'completed'   THEN (SELECT message_id FROM Messages WHERE message_text LIKE 'Plakjanjeto e uspesno%'    LIMIT 1)
+        WHEN 'cancelled'   THEN (SELECT message_id FROM Messages WHERE message_text LIKE 'Vozenjeto e otkazano%'     LIMIT 1)
+        ELSE NULL
+    END;
+
+    -- Ако нема порака за овој статус → не прави ништо
+    IF v_message_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    -- Статус на нотификацијата
+    SELECT status_id INTO v_notif_status
+    FROM Status WHERE status_tip = 'ride' AND status_text = 'completed' LIMIT 1;
+
+    -- Вметни нотификација
+    INSERT INTO Notifications (message_id, sent_time, user_id, ride_id, status_id)
+    VALUES (v_message_id, NOW(), NEW.user_id, NEW.ride_id, v_notif_status);
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_notify_on_ride_status_change
+AFTER UPDATE OF status_id ON Rides
+FOR EACH ROW
+WHEN (OLD.status_id IS DISTINCT FROM NEW.status_id)
+EXECUTE FUNCTION fn_notify_on_ride_status_change();
+
+SELECT * FROM Notifications WHERE ride_id = 12907878;
+-- Смени статус на вожњата
+UPDATE Rides SET status_id = (
+    SELECT status_id FROM Status 
+    WHERE status_tip='ride' AND status_text='accepted' LIMIT 1
+) WHERE ride_id = 12907878;
+
+-- Провери дали се додала нотификација автоматски
+SELECT * FROM Notifications WHERE ride_id = 12907878;
+
+--===============================================
+--za da najdeme nekoj ride so cancelled status
+--===============================================
+SELECT * FROM Notifications;
+-- Najdi ride koj ima status cancelled
+SELECT ride_id, status_id FROM Rides 
+WHERE status_id = (
+    SELECT status_id FROM Status 
+    WHERE status_tip='ride' AND status_text='cancelled' LIMIT 1
+)
+LIMIT 5;
