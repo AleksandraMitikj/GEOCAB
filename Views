@@ -1,0 +1,332 @@
+## VIEW 1: vw_active_driver_status
+CREATE OR REPLACE VIEW vw_active_driver_status
+            (driver_id, driver_name, driver_phone, driver_rating, is_available, working_start,
+             current_location_id, grad, naselba, current_street, vehicle_plate, vehicle_color,
+             vehicle_model, vehicle_class, vehicle_brand, base_price, price_per_km, driver_status)
+AS
+                        SELECT d.driver_id,
+                                 d.name         AS driver_name,
+                                 d.phone        AS driver_phone,
+                                 d.rating       AS driver_rating,
+                                 ad.is_available,
+                                 ad.working_start,
+                                 l.location_id  AS current_location_id,
+                                 l.grad,
+                                 l.naselba,
+                                 l.ulica        AS current_street,
+                                 vo.plate       AS vehicle_plate,
+                                 vo.color       AS vehicle_color,
+                                 vt.type_name   AS vehicle_model,
+                                 vt.description AS vehicle_class,
+                                 vm.model       AS vehicle_brand,
+                                 pr.base_price,
+                                 pr.price_per_km,
+                                 s.status_text  AS driver_status
+FROM active_drivers ad
+         JOIN drivers d ON ad.driver_id = d.driver_id
+         JOIN locations l ON ad.current_location_id = l.location_id
+         JOIN status s ON d.status_id = s.status_id
+         LEFT JOIN vehicle_ownership vo ON ad.vehicle_ownership_id = vo.vehicle_ownership_id
+         LEFT JOIN vehicle_types vt ON vo.vehicle_type_id = vt.vehicle_type_id
+         LEFT JOIN vehicles_model vm ON vt.vehicles_model_id = vm.vehicles_model_id
+         LEFT JOIN pricing_rules pr ON vt.vehicle_type_id = pr.vehicle_type_id
+WHERE s.status_text::text = 'active'::text
+ORDER BY d.driver_id, pr.base_price DESC;
+
+
+## VIEW 2: vw_ride_details
+CREATE OR REPLACE VIEW vw_ride_details AS
+SELECT
+    r.ride_id,
+    -- Korisnik
+    u.user_id,
+    u.name                                  AS user_name,
+    u.phone                                 AS user_phone,
+
+    -- Vozac
+    d.driver_id,
+    d.name                                  AS driver_name,
+    d.phone                                 AS driver_phone,
+    d.rating                                AS driver_rating,
+
+    -- Avto
+    vo.plate       AS vehicle_plate,
+    vo.color       AS vehicle_color,
+    vt.type_name   AS vehicle_model,
+    vt.description AS vehicle_class,
+    vm.model       AS vehicle_brand,
+
+    -- Pickup lokacija
+    lp.grad                                 AS pickup_grad,
+    lp.naselba                              AS pickup_naselba,
+    lp.ulica                                AS pickup_ulica,
+    lp.broj                                 AS pickup_broj,
+    lp.latitude                             AS pickup_lat,
+    lp.longitude                            AS pickup_lng,
+
+    -- Dropoff lokacija
+    ld.grad                                 AS dropoff_grad,
+    ld.naselba                              AS dropoff_naselba,
+    ld.ulica                                AS dropoff_ulica,
+    ld.broj                                 AS dropoff_broj,
+    ld.latitude                             AS dropoff_lat,
+    ld.longitude                            AS dropoff_lng,
+
+    -- Vremijna sekvenca
+    r.request_time,
+    r.pickup_time,
+    r.start_time,
+    r.end_time,
+
+    -- Cena i distanca
+    r.distance_km,
+    r.discount_percentage,
+    r.final_price,
+
+    -- Status na voznata
+    s.status_text                           AS ride_status
+
+FROM Rides r
+         LEFT JOIN Users u        ON r.user_id                = u.user_id
+         LEFT JOIN Drivers d      ON r.driver_id              = d.driver_id
+         JOIN Locations lp   ON r.pickup_location_id     = lp.location_id
+         JOIN Locations ld   ON r.dropoff_location_id    = ld.location_id
+         JOIN Status s       ON r.status_id              = s.status_id
+         LEFT JOIN vehicle_ownership vo ON r.vehicle_ownership_id = vo.vehicle_ownership_id
+         LEFT JOIN vehicle_types vt ON vo.vehicle_type_id = vt.vehicle_type_id
+         LEFT JOIN vehicles_model vm ON vt.vehicles_model_id = vm.vehicles_model_id
+;
+
+select * from vw_ride_details;
+
+CREATE INDEX idx_rides_user_id 
+    ON rides(user_id DESC NULLS LAST);
+CREATE INDEX idx_rides_driver_id 
+        ON rides(driver_id DESC NULLS LAST);
+
+
+## VIEW 3: vw_payment_history
+CREATE OR REPLACE VIEW vw_payment_history AS
+SELECT
+    p.payment_id,
+
+    -- Korisnik
+    u.user_id,
+    u.name                                  AS user_name,
+    u.phone                                 AS user_phone,
+
+    -- Ride info
+    r.ride_id,
+    r.request_time                          AS ride_requested_at,
+    r.start_time                            AS ride_started_at,
+    r.end_time                              AS ride_ended_at,
+    r.distance_km,
+
+    -- Adresa kratko
+    lp.naselba  || ' - ' ||
+    lp.ulica    || ' '   || lp.broj         AS pickup_address,
+
+    ld.naselba  || ' - ' ||
+    ld.ulica    || ' '   || ld.broj         AS dropoff_address,
+
+    -- Vozac
+    d.driver_id,
+    d.name                                  AS driver_name,
+
+    -- Avto
+    vo.plate       AS vehicle_plate,
+    vt.type_name   AS vehicle_model,
+    vt.description AS vehicle_class,
+    vm.model       AS vehicle_brand,
+
+    -- Plakjanje
+    p.amount,
+    p.payment_time,
+    pm.payment_tip                          AS payment_method,  -- CASH / CARD
+
+    -- Originalna cena pred popust
+    ROUND(
+            p.amount / NULLIF(1.0 - r.discount_percentage / 100.0, 0)
+                ::numeric, 2)                           AS amount_before_discount,
+
+    r.discount_percentage,
+
+    -- Statusi
+    sp.status_text                          AS payment_status,
+    sr.status_text                          AS ride_status
+
+FROM Payments p
+         JOIN Rides r            ON p.ride_id                    = r.ride_id
+         JOIN Users u            ON r.user_id                    = u.user_id
+         JOIN Drivers d          ON r.driver_id                  = d.driver_id
+         JOIN Payment_methods pm ON p.payment_method_id          = pm.payment_method_id
+         JOIN Status sp          ON p.status_id                  = sp.status_id
+         JOIN Status sr          ON r.status_id                  = sr.status_id
+         JOIN Locations lp       ON r.pickup_location_id         = lp.location_id
+         JOIN Locations ld       ON r.dropoff_location_id        = ld.location_id
+         LEFT JOIN vehicle_ownership vo ON r.vehicle_ownership_id = vo.vehicle_ownership_id
+         LEFT JOIN vehicle_types vt ON vo.vehicle_type_id = vt.vehicle_type_id
+         LEFT JOIN vehicles_model vm ON vt.vehicles_model_id = vm.vehicles_model_id
+
+;
+
+select * from vw_payment_history;
+
+CREATE INDEX idx_payments_ride_id 
+    ON payments(ride_id DESC NULLS LAST);
+CREATE INDEX idx_payments_date 
+    ON payments(DATE(payment_time));
+
+
+## VIEW 4: vw_driver_profile
+CREATE OR REPLACE VIEW vw_driver_profile AS
+SELECT
+    d.driver_id,
+    d.name                                  AS driver_name,
+    d.phone                                 AS driver_phone,
+    d.rating                                AS driver_rating,
+    d.registration_date,
+
+    -- Dali e momentalno aktiven/dostapen
+    ad.is_available,
+    ad.working_start,
+    ad.working_end,
+
+    -- Momentalna lokacija
+    l.grad                                  AS current_grad,
+    l.naselba                               AS current_naselba,
+    l.ulica                                 AS current_ulica,
+    l.latitude                              AS current_lat,
+    l.longitude                             AS current_lng,
+
+    -- Vozilo
+    vo.Vehicle_ownership_id,
+    vo.Plate                                AS vehicle_plate,
+    vo.Color                                AS vehicle_color,
+    vo.year                                 AS vehicle_year,
+
+    -- Tip i brend
+    vm.Model                                AS vehicle_brand,
+    vt.type_name                            AS vehicle_model,
+    vt.description                          AS vehicle_class,   -- Economy / Luxury
+
+    -- Cena za ovoj vozac
+    pr.base_price,
+    pr.price_per_km,
+
+    -- Status na vozacot
+    s.status_text                           AS driver_status
+
+FROM Drivers d
+         JOIN Status s                       ON d.status_id              = s.status_id
+         LEFT JOIN Active_drivers ad         ON d.driver_id              = ad.driver_id
+         LEFT JOIN Locations l               ON ad.current_location_id   = l.location_id
+         LEFT JOIN Drivers_Vehicle_ownership dvo ON d.driver_id          = dvo.driver_id
+         LEFT JOIN Vehicle_ownership vo      ON dvo.Vehicle_ownership_id = vo.Vehicle_ownership_id
+         LEFT JOIN Vehicle_types vt          ON vo.vehicle_type_id       = vt.vehicle_type_id
+         LEFT JOIN Vehicles_model vm         ON vt.Vehicles_model_id     = vm.Vehicles_model_id
+         LEFT JOIN Pricing_rules pr          ON vt.vehicle_type_id       = pr.vehicle_type_id
+WHERE s.status_text = 'active' and ad.is_available is true;
+
+
+## VIEW 5: vw_cancellation_details
+CREATE OR REPLACE VIEW vw_cancellation_details AS
+SELECT
+    c.cancellation_id,
+    c.ride_id,
+
+    -- Koj otkazal
+    c.cancelled_by_type,                    -- USER / DRIVER / ADMIN
+    c.cancelled_by_id,
+    c.reason,
+    c.cancellation_fee,
+    c.created_at                            AS cancelled_at,
+
+    -- Korisnik na voznata
+    u.user_id,
+    u.name                                  AS user_name,
+    u.phone                                 AS user_phone,
+
+    -- Vozac na voznata
+    d.driver_id,
+    d.name                                  AS driver_name,
+    d.phone                                 AS driver_phone,
+
+    -- Vozilo (za da se vidi dali e Economy ili Luxury)
+    vt.description                          AS vehicle_class,
+    pr.base_price                           AS tariff_base_price,
+
+    -- Pickup lokacija
+    lp.naselba                              AS pickup_naselba,
+    lp.ulica || ' ' || lp.broj             AS pickup_address,
+
+    -- Vreme na baranjeto
+    r.request_time,
+    r.distance_km,
+
+    -- Status na voznata
+    s.status_text                           AS ride_status
+
+FROM Cancellations c
+         JOIN Rides r            ON c.ride_id                    = r.ride_id
+         JOIN Users u            ON r.user_id                    = u.user_id
+         JOIN Drivers d          ON r.driver_id                  = d.driver_id
+         JOIN Status s           ON r.status_id                  = s.status_id
+         JOIN Locations lp       ON r.pickup_location_id         = lp.location_id
+         LEFT JOIN Vehicle_ownership vo      ON r.Vehicle_ownership_id = vo.Vehicle_ownership_id
+         LEFT JOIN Vehicle_types vt          ON vo.vehicle_type_id       = vt.vehicle_type_id
+         LEFT JOIN Pricing_rules pr          ON vt.vehicle_type_id       = pr.vehicle_type_id;
+
+
+select * from vw_cancellation_details;
+
+CREATE INDEX idx_cancellations_ride_id 
+    ON cancellations(ride_id DESC NULLS LAST);
+
+
+## VIEW 6: vw_user_notifications
+CREATE OR REPLACE VIEW vw_user_notifications AS
+SELECT
+    n.notification_id,
+
+    -- Korisnik
+    u.user_id,
+    u.name                                  AS user_name,
+
+    -- Poraka
+    m.message_id,
+    m.message_text,
+    n.sent_time,
+
+    -- Za koja voznja se odnesuva
+    n.ride_id,
+    r.request_time                          AS ride_request_time,
+
+    -- Kratka adresa za kontekst
+    lp.naselba                              AS pickup_naselba,
+    lp.ulica  ' ' 
+ lp.broj             AS pickup_address,
+    ld.ulica  ' ' 
+ ld.broj             AS dropoff_address,
+
+    -- Status na voznata (za kontekst vo notifikacijata)
+    sr.status_text                          AS ride_status,
+
+    -- Status na notifikacijata (sent / fail)
+    sn.status_text                          AS notification_status
+
+FROM Notifications n
+
+         JOIN Users u            ON n.user_id                    = u.user_id
+         JOIN Messages m         ON n.message_id                 = m.message_id
+         JOIN Rides r            ON n.ride_id                    = r.ride_id
+         JOIN Status sn          ON n.status_id                  = sn.status_id
+         JOIN Status sr          ON r.status_id                  = sr.status_id
+         JOIN Locations lp       ON r.pickup_location_id         = lp.location_id
+         JOIN Locations ld       ON r.dropoff_location_id        = ld.location_id;
+
+
+select * from vw_user_notifications;
+
+CREATE INDEX idx_notifications_user_id ON notifications(user_id DESC NULLS LAST);
+CREATE INDEX idx_notifications_ride_id ON notifications(ride_id DESC NULLS LAST);
